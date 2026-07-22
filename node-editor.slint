@@ -89,6 +89,10 @@ export component NodeEditor inherits Window {
     in-out property <int> link-source: -1; // node whose output pin is armed
     property <float> pending-zoom;
 
+    // live perf counters, set by the backend
+    in property <float> cpu: -1;  // process CPU %, -1 = n/a (e.g. the browser)
+    in property <int> fps: 0;     // rendered frames per second
+
     // ---- drag bookkeeping ----
     property <length> drag-off-x;
     property <length> drag-off-y;
@@ -208,6 +212,37 @@ export component NodeEditor inherits Window {
                         vertical-alignment: center;
                     }
                     Rectangle { } // spacer
+                    // live perf counter — CPU stays near-idle even while dragging
+                    Rectangle {
+                        y: (parent.height - 28px) / 2;
+                        height: 28px;
+                        width: 150px;
+                        border-radius: 6px;
+                        background: #eef5ee;
+                        border-color: #cfe3cf;
+                        border-width: 1px;
+                        HorizontalLayout {
+                            padding-left: 10px;
+                            padding-right: 10px;
+                            spacing: 8px;
+                            alignment: center;
+                            Text {
+                                text: root.cpu < 0 ? "CPU —" : "CPU " + Math.round(root.cpu) + "%";
+                                font-size: 12px;
+                                font-weight: 700;
+                                color: #2e7d46;
+                                vertical-alignment: center;
+                            }
+                            Rectangle { width: 1px; background: #cfe3cf; }
+                            Text {
+                                text: root.fps == 0 ? "idle" : root.fps + " FPS";
+                                font-size: 12px;
+                                font-weight: 600;
+                                color: Palette.muted;
+                                vertical-alignment: center;
+                            }
+                        }
+                    }
                     // zoom controls
                     for z[i] in ["−", "Fit", "+"]: Rectangle {
                         width: t.preferred-width + 22px;

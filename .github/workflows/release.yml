@@ -32,7 +32,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable # Slint C++ is fetched & built from source
       - name: Linux deps
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y libxcb-shape0-dev libxcb-xfixes0-dev libxkbcommon-dev
+        run: sudo apt-get update && sudo apt-get install -y libfontconfig1-dev libxcb-shape0-dev libxcb-xfixes0-dev libxkbcommon-dev
       - name: Configure & build
         run: |
           cmake -B build -S . -DCMAKE_BUILD_TYPE=Release

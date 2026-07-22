@@ -21,6 +21,10 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 slint = "1"
 
+# process CPU sampling for the perf counter (native only)
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
 [build-dependencies]
 slint-build = "1"
 

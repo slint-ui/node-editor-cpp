@@ -7,11 +7,41 @@
 
 #include "node-editor.h"
 
+#include <atomic>
+#include <chrono>
 #include <memory>
 #include <vector>
 
+#if defined(_WIN32)
+#    include <windows.h>
+#else
+#    include <sys/resource.h>
+#endif
+
 using slint::SharedString;
 using slint::VectorModel;
+
+// Cumulative process CPU time (user + system) in seconds.
+static double cpu_seconds()
+{
+#if defined(_WIN32)
+    FILETIME c, e, k, u;
+    if (!GetProcessTimes(GetCurrentProcess(), &c, &e, &k, &u))
+        return 0.0;
+    auto to_s = [](FILETIME f) {
+        ULARGE_INTEGER x;
+        x.LowPart = f.dwLowDateTime;
+        x.HighPart = f.dwHighDateTime;
+        return double(x.QuadPart) * 1e-7; // 100ns ticks -> seconds
+    };
+    return to_s(k) + to_s(u);
+#else
+    rusage r;
+    getrusage(RUSAGE_SELF, &r);
+    auto s = [](timeval t) { return t.tv_sec + t.tv_usec * 1e-6; };
+    return s(r.ru_utime) + s(r.ru_stime);
+#endif
+}
 
 static NodeData make_node(const char *title, const char *subtitle, float x, float y, int state)
 {
@@ -115,6 +145,32 @@ int main()
             });
         }
         wires->set_vector(std::move(kept));
+    });
+
+    // ---- live CPU% + FPS counter ----
+    // Count rendered frames, then every 500ms turn that into an FPS reading
+    // and sample process CPU. Shows the CPU stays near-idle even while dragging.
+    auto frames = std::make_shared<std::atomic<int>>(0);
+    ui->window().set_rendering_notifier([frames](slint::RenderingState state, slint::GraphicsAPI) {
+        if (state == slint::RenderingState::AfterRendering)
+            frames->fetch_add(1, std::memory_order_relaxed);
+    });
+
+    auto prev_cpu = std::make_shared<double>(cpu_seconds());
+    auto prev_t = std::make_shared<std::chrono::steady_clock::time_point>(
+        std::chrono::steady_clock::now());
+    slint::Timer perf_timer(std::chrono::milliseconds(500), [=]() {
+        auto ui = weak.lock();
+        if (!ui)
+            return;
+        (*ui)->set_fps(frames->exchange(0) * 2); // 500ms window -> per second
+        double now_cpu = cpu_seconds();
+        auto now_t = std::chrono::steady_clock::now();
+        double dt = std::chrono::duration<double>(now_t - *prev_t).count();
+        if (dt > 0)
+            (*ui)->set_cpu(float((now_cpu - *prev_cpu) / dt * 100.0));
+        *prev_cpu = now_cpu;
+        *prev_t = now_t;
     });
 
     ui->run();

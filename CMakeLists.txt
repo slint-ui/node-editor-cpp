@@ -24,11 +24,12 @@ target_compile_features(node-editor PRIVATE cxx_std_20)
 target_link_libraries(node-editor PRIVATE Slint::Slint)
 slint_target_sources(node-editor node-editor.slint)
 
-# On Windows, copy the Slint runtime DLL next to the binary.
+# On Windows, copy any runtime DLLs (incl. Slint's) next to the binary.
 if (WIN32)
     add_custom_command(
         TARGET node-editor POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            $<TARGET_FILE:Slint::Slint> $<TARGET_FILE_DIR:node-editor>
+            $<TARGET_RUNTIME_DLLS:node-editor> $<TARGET_FILE_DIR:node-editor>
+        COMMAND_EXPAND_LISTS
     )
 endif()

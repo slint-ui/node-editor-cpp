@@ -5,6 +5,7 @@
 // The Rust side owns the models and mutates them; every gesture
 // (drag / pan / zoom / select / link) is handled in the .slint UI.
 
+use std::cell::Cell;
 use std::rc::Rc;
 
 use slint::{Model, ModelRc, SharedString, VecModel};
@@ -17,6 +18,50 @@ slint::include_modules!();
 fn node(title: &str, subtitle: &str, x: f32, y: f32, state: i32) -> NodeData {
     // `length` in .slint maps to f32 (logical pixels) in generated Rust.
     NodeData { title: title.into(), subtitle: subtitle.into(), x, y, state }
+}
+
+// Cumulative process CPU time (user + system) in seconds.
+#[cfg(unix)]
+fn cpu_seconds() -> f64 {
+    let mut u = std::mem::MaybeUninit::<libc::rusage>::zeroed();
+    unsafe {
+        libc::getrusage(libc::RUSAGE_SELF, u.as_mut_ptr());
+        let u = u.assume_init();
+        let s = |t: libc::timeval| t.tv_sec as f64 + t.tv_usec as f64 * 1e-6;
+        s(u.ru_utime) + s(u.ru_stime)
+    }
+}
+
+// Wire up the live CPU% + FPS counter: count rendered frames, then every
+// 500ms turn that into an FPS reading and sample process CPU. Kept alive by
+// the returned Timer, which must outlive run().
+fn install_perf_counter(ui: &NodeEditor) -> slint::Timer {
+    let frames = Rc::new(Cell::new(0u32));
+    let counter = frames.clone();
+    let _ = ui.window().set_rendering_notifier(move |state, _| {
+        if matches!(state, slint::RenderingState::AfterRendering) {
+            counter.set(counter.get() + 1);
+        }
+    });
+
+    let timer = slint::Timer::default();
+    let weak = ui.as_weak();
+    #[cfg(unix)]
+    let mut prev = (cpu_seconds(), std::time::Instant::now());
+    timer.start(slint::TimerMode::Repeated, std::time::Duration::from_millis(500), move || {
+        let Some(ui) = weak.upgrade() else { return };
+        ui.set_fps((frames.replace(0) * 2) as i32); // 500ms window -> per second
+        #[cfg(unix)]
+        {
+            let now = (cpu_seconds(), std::time::Instant::now());
+            let dt = now.1.duration_since(prev.1).as_secs_f64();
+            if dt > 0.0 {
+                ui.set_cpu((((now.0 - prev.0) / dt) * 100.0) as f32);
+            }
+            prev = now;
+        }
+    });
+    timer
 }
 
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen(start))]
@@ -158,5 +203,6 @@ fn main() -> Result<(), slint::PlatformError> {
         });
     }
 
+    let _perf_timer = install_perf_counter(&ui); // must outlive run()
     ui.run()
 }
