@@ -24,6 +24,17 @@ same UI also compiles to **WebAssembly** for a browser demo.
 - Click an output pin, then an input pin, to connect
 - Selection + a live property editor (rename, validation state, delete)
 - Class palette to add nodes
+- Live **CPU% + FPS counter** in the toolbar (native shows real process CPU;
+  the browser can't, so it reads "—")
+
+### About the counter
+
+Slint only repaints when something changes, so when you're not interacting the
+editor renders **zero frames** and uses **~0% CPU** — even while dragging a wire,
+CPU stays in the low single digits. Note the counter reads ~2 FPS at rest rather
+than 0: refreshing the on-screen number twice a second is itself a change, so it
+triggers ~2 repaints/second — the counter measuring itself. Without it on screen,
+idle is a true 0.
 
 ## Build & run — C++
 
