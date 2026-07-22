@@ -1,0 +1,29 @@
+// Copyright © SixtyFPS GmbH <info@slint.dev>
+// SPDX-License-Identifier: MIT
+//
+// Static preview used only for slint-viewer screenshots (no Rust backend).
+// The real app populates these models from Rust in main.rs.
+
+import { NodeEditor } from "node-editor.slint";
+
+export component Preview inherits NodeEditor {
+    classes: [
+        "View", "GeometryLayer", "TextLayer", "RasterLayer", "FileDataSet",
+        "MemoryDataSet", "WmsDataSet", "StyleOperator", "FilterOperator", "ProjectionOperator",
+    ];
+    nodes: [
+        { title: "View",           subtitle: "MainView",   x: 30px,  y: 300px, state: 0 },
+        { title: "GeometryLayer",  subtitle: "Roads",      x: 300px, y: 150px, state: 0 },
+        { title: "GeometryLayer",  subtitle: "Buildings",  x: 300px, y: 300px, state: 0 },
+        { title: "TextLayer",      subtitle: "Labels",     x: 300px, y: 450px, state: 1 },
+        { title: "FileDataSet",    subtitle: "roads.shp",  x: 570px, y: 150px, state: 0 },
+        { title: "MemoryDataSet",  subtitle: "buildings",  x: 570px, y: 300px, state: 0 },
+        { title: "WmsDataSet",     subtitle: "basemap",    x: 570px, y: 450px, state: 2 },
+        { title: "StyleOperator",  subtitle: "RoadStyle",  x: 840px, y: 150px, state: 0 },
+    ];
+    wires: [
+        { from: 0, to: 1 }, { from: 0, to: 2 }, { from: 0, to: 3 },
+        { from: 1, to: 4 }, { from: 2, to: 5 }, { from: 3, to: 6 }, { from: 4, to: 7 },
+    ];
+    selected: 1;
+}

@@ -1,0 +1,662 @@
+// Copyright © SixtyFPS GmbH <info@slint.dev>
+// SPDX-License-Identifier: MIT
+//
+// Carmenta-style dataflow node editor UI. All interaction
+// (drag/pan/zoom/select/link) lives here; the host backend only owns
+// the models. See main.cpp.
+
+import { LineEdit, ScrollView } from "std-widgets.slint";
+
+export struct NodeData {
+    title: string,
+    subtitle: string,
+    x: length,
+    y: length,
+    state: int, // 0 = complete, 1 = incomplete (yellow), 2 = error (red)
+}
+
+export struct WireData {
+    from: int,
+    to: int,
+}
+
+global Palette {
+    out property <color> app-bg: #eef1f5;
+    out property <color> panel-bg: #ffffff;
+    out property <color> panel-line: #d7dee7;
+    out property <color> canvas-bg: #fbfcfe;
+    out property <color> grid-dot: #dde4ee;
+    out property <color> accent: #2f88ff;
+    out property <color> wire: #6bb6ff;
+    out property <color> ink: #1c2733;
+    out property <color> muted: #6b7787;
+    out property <color> node-border: #cfd7e1;
+    out property <color> incomplete: #e6a700;
+    out property <color> error: #e5484d;
+}
+
+global Geo {
+    out property <length> nw: 186px; // node width  (world units)
+    out property <length> nh: 66px;  // node height (world units)
+}
+
+component ClassRow inherits Rectangle {
+    in property <string> name;
+    callback add();
+    height: 30px;
+    background: ta.has-hover ? #eef4ff : transparent;
+    border-radius: 5px;
+    HorizontalLayout {
+        padding-left: 10px;
+        padding-right: 8px;
+        spacing: 8px;
+        alignment: start;
+        Rectangle {
+            y: (parent.height - 8px) / 2;
+            width: 8px;
+            height: 8px;
+            border-radius: 2px;
+            background: Palette.accent;
+        }
+        Text {
+            text: root.name;
+            color: Palette.ink;
+            font-size: 13px;
+            vertical-alignment: center;
+        }
+    }
+    ta := TouchArea {
+        clicked => { root.add(); }
+    }
+}
+
+export component NodeEditor inherits Window {
+    title: "Carmenta-style Dataflow Editor — Slint PoC";
+    preferred-width: 1240px;
+    preferred-height: 780px;
+    background: Palette.app-bg;
+
+    // ---- model (owned by Rust) ----
+    in-out property <[NodeData]> nodes;
+    in-out property <[WireData]> wires;
+    in property <[string]> classes;
+
+    // ---- view state ----
+    in-out property <length> pan-x: 30px;
+    in-out property <length> pan-y: 20px;
+    in-out property <float> zoom: 1.0;
+    in-out property <int> selected: -1;
+    in-out property <int> link-source: -1; // node whose output pin is armed
+    property <float> pending-zoom;
+
+    // ---- drag bookkeeping ----
+    property <length> drag-off-x;
+    property <length> drag-off-y;
+    property <length> pan-start-mx;
+    property <length> pan-start-my;
+    property <length> pan-start-px;
+    property <length> pan-start-py;
+
+    // ---- callbacks into Rust ----
+    callback add-node(string);
+    callback delete-node(int);
+    callback add-wire(int, int);
+    callback set-node-state(int, int);
+    callback rename-node(int, string);
+    callback node-moved(int, length, length);
+
+    // pin/edge screen coordinates (world -> screen)
+    pure function out-x(i: int) -> length { return (root.nodes[i].x + Geo.nw) * root.zoom + root.pan-x; }
+    pure function out-y(i: int) -> length { return (root.nodes[i].y + Geo.nh / 2) * root.zoom + root.pan-y; }
+    pure function in-x(i: int)  -> length { return root.nodes[i].x * root.zoom + root.pan-x; }
+    pure function in-y(i: int)  -> length { return (root.nodes[i].y + Geo.nh / 2) * root.zoom + root.pan-y; }
+
+    HorizontalLayout {
+        spacing: 0px;
+
+        // =========================================================== LEFT: index pane
+        Rectangle {
+            width: 236px;
+            background: Palette.panel-bg;
+            border-color: Palette.panel-line;
+            border-width: 1px;
+            VerticalLayout {
+                padding: 0px;
+                // tab strip
+                Rectangle {
+                    height: 40px;
+                    background: #f6f8fb;
+                    border-color: Palette.panel-line;
+                    border-width: 1px;
+                    HorizontalLayout {
+                        padding: 6px;
+                        spacing: 4px;
+                        for t[i] in ["Classes", "Resources", "Objects"]: Rectangle {
+                            border-radius: 5px;
+                            background: i == 0 ? Palette.panel-bg : transparent;
+                            border-color: i == 0 ? Palette.panel-line : transparent;
+                            border-width: 1px;
+                            Text {
+                                text: t;
+                                font-size: 12px;
+                                font-weight: i == 0 ? 700 : 400;
+                                color: i == 0 ? Palette.ink : Palette.muted;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                            }
+                        }
+                    }
+                }
+                Text {
+                    text: "Commonly used";
+                    font-size: 11px;
+                    font-weight: 700;
+                    color: Palette.muted;
+                    // small section header
+                    height: 26px;
+                    vertical-alignment: center;
+                    horizontal-alignment: left;
+                    x: 12px;
+                }
+                ScrollView {
+                    VerticalLayout {
+                        padding-left: 6px;
+                        padding-right: 6px;
+                        spacing: 1px;
+                        alignment: start;
+                        for c in root.classes: ClassRow {
+                            name: c;
+                            add => { root.add-node(c); }
+                        }
+                    }
+                }
+                Rectangle {
+                    height: 34px;
+                    background: #f6f8fb;
+                    border-color: Palette.panel-line;
+                    border-width: 1px;
+                    Text {
+                        text: "Click a class to add it to the canvas";
+                        font-size: 11px;
+                        font-italic: true;
+                        color: Palette.muted;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                }
+            }
+        }
+
+        // =========================================================== CENTER: canvas
+        VerticalLayout {
+            spacing: 0px;
+            // toolbar
+            Rectangle {
+                height: 46px;
+                background: Palette.panel-bg;
+                border-color: Palette.panel-line;
+                border-width: 1px;
+                HorizontalLayout {
+                    padding-left: 14px;
+                    padding-right: 12px;
+                    spacing: 10px;
+                    Text {
+                        text: "Dataflow";
+                        font-size: 15px;
+                        font-weight: 700;
+                        color: Palette.ink;
+                        vertical-alignment: center;
+                    }
+                    Rectangle { } // spacer
+                    // zoom controls
+                    for z[i] in ["−", "Fit", "+"]: Rectangle {
+                        width: t.preferred-width + 22px;
+                        y: (parent.height - 28px) / 2;
+                        height: 28px;
+                        border-radius: 6px;
+                        background: zta.has-hover ? #eef4ff : #f4f6fa;
+                        border-color: Palette.panel-line;
+                        border-width: 1px;
+                        t := Text {
+                            text: z;
+                            font-size: 14px;
+                            font-weight: 600;
+                            color: Palette.ink;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+                        zta := TouchArea {
+                            clicked => {
+                                if i == 0 { root.zoom = max(0.35, root.zoom / 1.15); }
+                                else if i == 2 { root.zoom = min(3.0, root.zoom * 1.15); }
+                                else { root.zoom = 1.0; root.pan-x = 30px; root.pan-y = 20px; }
+                            }
+                        }
+                    }
+                    Text {
+                        text: Math.round(root.zoom * 100) + "%";
+                        font-size: 12px;
+                        color: Palette.muted;
+                        vertical-alignment: center;
+                        width: 42px;
+                        horizontal-alignment: right;
+                    }
+                }
+            }
+            // the canvas
+            canvas := Rectangle {
+                clip: true;
+                background: Palette.canvas-bg;
+                border-color: Palette.panel-line;
+                border-width: 1px;
+
+                // grid
+                for gx in 40: Rectangle {
+                    width: 1px;
+                    background: Palette.grid-dot;
+                    opacity: 0.6;
+                    x: Math.mod(gx * 40px * root.zoom + root.pan-x, parent.width + 40px * root.zoom) - 40px * root.zoom;
+                    y: 0;
+                    height: parent.height;
+                }
+                for gy in 24: Rectangle {
+                    height: 1px;
+                    background: Palette.grid-dot;
+                    opacity: 0.6;
+                    y: Math.mod(gy * 40px * root.zoom + root.pan-y, parent.height + 40px * root.zoom) - 40px * root.zoom;
+                    x: 0;
+                    width: parent.width;
+                }
+
+                // background touch area: pan + zoom + click-to-deselect
+                bg := TouchArea {
+                    scroll-event(e) => {
+                        root.pending-zoom = max(0.35, min(3.0, root.zoom * (e.delta-y > 0 ? 1.12 : 0.893)));
+                        // keep the point under the cursor fixed
+                        root.pan-x = self.mouse-x - (self.mouse-x - root.pan-x) * root.pending-zoom / root.zoom;
+                        root.pan-y = self.mouse-y - (self.mouse-y - root.pan-y) * root.pending-zoom / root.zoom;
+                        root.zoom = root.pending-zoom;
+                        return EventResult.accept;
+                    }
+                    pointer-event(e) => {
+                        if e.kind == PointerEventKind.down && e.button == PointerEventButton.left {
+                            root.selected = -1;
+                            root.link-source = -1;
+                            root.pan-start-mx = self.mouse-x;
+                            root.pan-start-my = self.mouse-y;
+                            root.pan-start-px = root.pan-x;
+                            root.pan-start-py = root.pan-y;
+                        }
+                    }
+                    moved => {
+                        root.pan-x = root.pan-start-px + (self.mouse-x - root.pan-start-mx);
+                        root.pan-y = root.pan-start-py + (self.mouse-y - root.pan-start-my);
+                    }
+                }
+
+                // ---- wires ----
+                for w in root.wires: Path {
+                    x: 0; y: 0;
+                    width: 100%;
+                    height: 100%;
+                    viewbox-x: 0;
+                    viewbox-y: 0;
+                    viewbox-width: self.width / 1px;
+                    viewbox-height: self.height / 1px;
+                    stroke: Palette.wire;
+                    stroke-width: max(2px, 3px * root.zoom);
+                    MoveTo {
+                        x: root.out-x(w.from) / 1px;
+                        y: root.out-y(w.from) / 1px;
+                    }
+                    CubicTo {
+                        control-1-x: (root.out-x(w.from) + 70px * root.zoom) / 1px;
+                        control-1-y: root.out-y(w.from) / 1px;
+                        control-2-x: (root.in-x(w.to) - 70px * root.zoom) / 1px;
+                        control-2-y: root.in-y(w.to) / 1px;
+                        x: root.in-x(w.to) / 1px;
+                        y: root.in-y(w.to) / 1px;
+                    }
+                }
+
+                // ---- live rubber-band wire while linking ----
+                if root.link-source >= 0: Path {
+                    x: 0; y: 0;
+                    width: 100%;
+                    height: 100%;
+                    viewbox-x: 0;
+                    viewbox-y: 0;
+                    viewbox-width: self.width / 1px;
+                    viewbox-height: self.height / 1px;
+                    stroke: Palette.accent;
+                    stroke-width: 2px;
+                    MoveTo {
+                        x: root.out-x(root.link-source) / 1px;
+                        y: root.out-y(root.link-source) / 1px;
+                    }
+                    CubicTo {
+                        control-1-x: (root.out-x(root.link-source) + 70px) / 1px;
+                        control-1-y: root.out-y(root.link-source) / 1px;
+                        control-2-x: bg.mouse-x / 1px;
+                        control-2-y: bg.mouse-y / 1px;
+                        x: bg.mouse-x / 1px;
+                        y: bg.mouse-y / 1px;
+                    }
+                }
+
+                // ---- nodes ----
+                for n[idx] in root.nodes: Rectangle {
+                    property <bool> is-sel: root.selected == idx;
+                    property <color> bcolor: is-sel ? Palette.accent
+                        : n.state == 2 ? Palette.error
+                        : n.state == 1 ? Palette.incomplete
+                        : Palette.node-border;
+                    x: n.x * root.zoom + root.pan-x;
+                    y: n.y * root.zoom + root.pan-y;
+                    width: Geo.nw * root.zoom;
+                    height: Geo.nh * root.zoom;
+                    border-radius: 8px * root.zoom;
+                    background: Palette.panel-bg;
+                    border-color: bcolor;
+                    border-width: (is-sel ? 2.5px : 1.5px) * max(0.7, root.zoom);
+                    drop-shadow-blur: 10px * root.zoom;
+                    drop-shadow-offset-y: 2px * root.zoom;
+                    drop-shadow-color: #22314711;
+
+                    // status stripe on the left
+                    Rectangle {
+                        x: 0; y: 0;
+                        width: 5px * root.zoom;
+                        height: parent.height;
+                        border-top-left-radius: parent.border-radius;
+                        border-bottom-left-radius: parent.border-radius;
+                        background: bcolor;
+                        opacity: n.state == 0 && !is-sel ? 0.35 : 1.0;
+                    }
+
+                    VerticalLayout {
+                        x: 12px * root.zoom;
+                        y: 10px * root.zoom;
+                        width: parent.width - 24px * root.zoom;
+                        spacing: 3px * root.zoom;
+                        HorizontalLayout {
+                            spacing: 6px * root.zoom;
+                            Text {
+                                text: n.title;
+                                font-size: 14px * root.zoom;
+                                font-weight: 700;
+                                color: Palette.ink;
+                                overflow: elide;
+                            }
+                            Rectangle { }
+                            Rectangle {
+                                width: 15px * root.zoom;
+                                height: 15px * root.zoom;
+                                border-radius: self.width / 2;
+                                background: #eef2f7;
+                                Text {
+                                    text: "?";
+                                    font-size: 10px * root.zoom;
+                                    font-weight: 700;
+                                    color: Palette.muted;
+                                    horizontal-alignment: center;
+                                    vertical-alignment: center;
+                                }
+                            }
+                        }
+                        Text {
+                            text: n.subtitle;
+                            font-size: 11px * root.zoom;
+                            color: Palette.muted;
+                            overflow: elide;
+                        }
+                    }
+
+                    // drag/select surface
+                    ndrag := TouchArea {
+                        pointer-event(e) => {
+                            if e.kind == PointerEventKind.down && e.button == PointerEventButton.left {
+                                root.selected = idx;
+                                root.link-source = -1;
+                                root.drag-off-x = n.x - (self.absolute-position.x + self.mouse-x - canvas.absolute-position.x - root.pan-x) / root.zoom;
+                                root.drag-off-y = n.y - (self.absolute-position.y + self.mouse-y - canvas.absolute-position.y - root.pan-y) / root.zoom;
+                            }
+                        }
+                        moved => {
+                            root.node-moved(idx,
+                                (self.absolute-position.x + self.mouse-x - canvas.absolute-position.x - root.pan-x) / root.zoom + root.drag-off-x,
+                                (self.absolute-position.y + self.mouse-y - canvas.absolute-position.y - root.pan-y) / root.zoom + root.drag-off-y);
+                        }
+                        mouse-cursor: move;
+                    }
+
+                    // input pin (left)
+                    Rectangle {
+                        x: -6px * root.zoom;
+                        y: (parent.height - 13px * root.zoom) / 2;
+                        width: 13px * root.zoom;
+                        height: 13px * root.zoom;
+                        border-radius: self.width / 2;
+                        background: (root.link-source >= 0 && root.link-source != idx)
+                            ? (ipin.has-hover ? Palette.accent : #ffffff) : #ffffff;
+                        border-color: (root.link-source >= 0 && root.link-source != idx) ? Palette.accent : Palette.muted;
+                        border-width: 2px;
+                        ipin := TouchArea {
+                            clicked => {
+                                if root.link-source >= 0 && root.link-source != idx {
+                                    root.add-wire(root.link-source, idx);
+                                    root.link-source = -1;
+                                }
+                            }
+                        }
+                    }
+                    // output pin (right)
+                    Rectangle {
+                        x: parent.width - 7px * root.zoom;
+                        y: (parent.height - 13px * root.zoom) / 2;
+                        width: 13px * root.zoom;
+                        height: 13px * root.zoom;
+                        border-radius: self.width / 2;
+                        background: root.link-source == idx ? Palette.accent : (opin.has-hover ? Palette.accent : #ffffff);
+                        border-color: Palette.accent;
+                        border-width: 2px;
+                        opin := TouchArea {
+                            clicked => {
+                                root.link-source = (root.link-source == idx) ? -1 : idx;
+                                root.selected = idx;
+                            }
+                        }
+                    }
+                }
+            }
+            // status bar
+            Rectangle {
+                height: 26px;
+                background: Palette.panel-bg;
+                border-color: Palette.panel-line;
+                border-width: 1px;
+                HorizontalLayout {
+                    padding-left: 12px;
+                    spacing: 16px;
+                    Text {
+                        text: root.nodes.length + " nodes · " + root.wires.length + " connections";
+                        font-size: 11px;
+                        color: Palette.muted;
+                        vertical-alignment: center;
+                    }
+                    Text {
+                        text: root.link-source >= 0 ? "Linking — click a target input pin (○ on the left of a node)"
+                            : "Drag nodes · drag empty space to pan · scroll to zoom · click an output pin (right) to connect";
+                        font-size: 11px;
+                        color: root.link-source >= 0 ? Palette.accent : Palette.muted;
+                        vertical-alignment: center;
+                    }
+                }
+            }
+        }
+
+        // =========================================================== RIGHT: property editor
+        Rectangle {
+            width: 288px;
+            background: Palette.panel-bg;
+            border-color: Palette.panel-line;
+            border-width: 1px;
+            VerticalLayout {
+                padding: 0px;
+                Rectangle {
+                    height: 40px;
+                    background: #f6f8fb;
+                    border-color: Palette.panel-line;
+                    border-width: 1px;
+                    Text {
+                        text: "Property Editor";
+                        font-size: 13px;
+                        font-weight: 700;
+                        color: Palette.ink;
+                        x: 14px;
+                        vertical-alignment: center;
+                    }
+                }
+
+                if root.selected < 0: Rectangle {
+                    VerticalLayout {
+                        alignment: center;
+                        Text {
+                            text: "Select a node to edit\nits properties";
+                            font-size: 13px;
+                            color: Palette.muted;
+                            horizontal-alignment: center;
+                        }
+                    }
+                }
+
+                if root.selected >= 0: VerticalLayout {
+                    padding: 14px;
+                    spacing: 12px;
+                    alignment: start;
+
+                    // class + name
+                    VerticalLayout {
+                        spacing: 5px;
+                        Text {
+                            text: "Class";
+                            font-size: 11px;
+                            font-weight: 700;
+                            color: Palette.muted;
+                        }
+                        Text {
+                            text: root.nodes[root.selected].title;
+                            font-size: 15px;
+                            font-weight: 700;
+                            color: Palette.ink;
+                        }
+                    }
+                    VerticalLayout {
+                        spacing: 5px;
+                        Text {
+                            text: "Name";
+                            font-size: 11px;
+                            font-weight: 700;
+                            color: Palette.muted;
+                        }
+                        LineEdit {
+                            text: root.nodes[root.selected].subtitle;
+                            placeholder-text: "(unnamed)";
+                            edited(t) => { root.rename-node(root.selected, t); }
+                        }
+                    }
+
+                    // property table
+                    Rectangle {
+                        height: 1px;
+                        background: Palette.panel-line;
+                    }
+                    Text {
+                        text: "Attributes";
+                        font-size: 11px;
+                        font-weight: 700;
+                        color: Palette.muted;
+                    }
+                    for row in [
+                        { k: "position.x", v: Math.round(root.nodes[root.selected].x / 1px) + " px" },
+                        { k: "position.y", v: Math.round(root.nodes[root.selected].y / 1px) + " px" },
+                        { k: "public", v: "true" },
+                    ]: HorizontalLayout {
+                        height: 26px;
+                        Text {
+                            text: row.k;
+                            width: 96px;
+                            font-size: 12px;
+                            color: Palette.muted;
+                            vertical-alignment: center;
+                        }
+                        Text {
+                            text: row.v;
+                            font-size: 12px;
+                            font-weight: 600;
+                            color: Palette.ink;
+                            vertical-alignment: center;
+                        }
+                    }
+
+                    Rectangle {
+                        height: 1px;
+                        background: Palette.panel-line;
+                    }
+                    Text {
+                        text: "Validation state";
+                        font-size: 11px;
+                        font-weight: 700;
+                        color: Palette.muted;
+                    }
+                    HorizontalLayout {
+                        spacing: 6px;
+                        for st[i] in ["Complete", "Incomplete", "Error"]: Rectangle {
+                            height: 30px;
+                            border-radius: 6px;
+                            property <bool> on: root.nodes[root.selected].state == i;
+                            property <color> tint: i == 2 ? Palette.error : i == 1 ? Palette.incomplete : #35b96a;
+                            background: on ? tint : (sta.has-hover ? #eef2f7 : #f4f6fa);
+                            border-color: on ? tint : Palette.panel-line;
+                            border-width: 1px;
+                            Text {
+                                text: st;
+                                font-size: 11px;
+                                font-weight: 600;
+                                color: on ? #ffffff : Palette.ink;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                            }
+                            sta := TouchArea {
+                                clicked => { root.set-node-state(root.selected, i); }
+                            }
+                        }
+                    }
+
+                    Rectangle { height: 6px; }
+                    Rectangle {
+                        height: 34px;
+                        border-radius: 6px;
+                        background: dta.has-hover ? #fdecec : #fff5f5;
+                        border-color: Palette.error;
+                        border-width: 1px;
+                        Text {
+                            text: "Delete node";
+                            font-size: 13px;
+                            font-weight: 600;
+                            color: Palette.error;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+                        dta := TouchArea {
+                            clicked => {
+                                root.delete-node(root.selected);
+                                root.selected = -1;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

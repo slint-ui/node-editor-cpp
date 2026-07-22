@@ -1,0 +1,4 @@
+/build/
+/build-*/
+*.slint.h
+.DS_Store
