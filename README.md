@@ -5,6 +5,8 @@ A small [Slint](https://slint.dev) node / dataflow editor in C++, modeled on
 forest (root at left), state-coloured class nodes, and light-blue bezier
 connector wires.
 
+**[▶ Live browser demo](https://slint-ui.github.io/node-editor-cpp/)** · **[⬇ Prebuilt C++ binaries](https://github.com/slint-ui/node-editor-cpp/releases/latest)** (macOS / Linux / Windows)
+
 ![screenshot](docs/screenshot.png)
 
 It exists to show that an interactive node editor is a build-it-yourself
