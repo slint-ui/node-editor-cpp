@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<!-- Copyright © SixtyFPS GmbH <info@slint.dev> ; SPDX-License-Identifier: MIT -->
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Carmenta-style Node Editor — Slint (WASM)</title>
+    <style>
+        html, body { margin: 0; height: 100%; background: #eef1f5;
+            font-family: system-ui, -apple-system, sans-serif; }
+        #canvas { display: block; }
+        #spinner { position: fixed; inset: 0; display: flex; align-items: center;
+            justify-content: center; color: #6b7787; font-size: 15px; }
+    </style>
+</head>
+<body>
+    <div id="spinner">Loading node editor…</div>
+    <canvas id="canvas" data-slint-auto-resize-to-preferred="true"></canvas>
+    <script type="module">
+        import init from "./pkg/node_editor.js";
+        init().finally(() => {
+            const s = document.getElementById("spinner");
+            if (s) s.remove();
+        });
+    </script>
+</body>
+</html>

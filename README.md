@@ -9,7 +9,9 @@ connector wires.
 
 It exists to show that an interactive node editor is a build-it-yourself
 component in Slint, not a fight-the-framework one. The whole thing is one
-`.slint` UI file (~430 lines) plus ~120 lines of C++ that only owns the models.
+`.slint` UI file (~430 lines) plus ~120 lines of backend that only owns the
+models — provided in both **C++** (`main.cpp`) and **Rust** (`main.rs`). The
+same UI also compiles to **WebAssembly** for a browser demo.
 
 ## Features
 
@@ -21,7 +23,7 @@ component in Slint, not a fight-the-framework one. The whole thing is one
 - Selection + a live property editor (rename, validation state, delete)
 - Class palette to add nodes
 
-## Build & run
+## Build & run — C++
 
 Needs CMake ≥ 3.21, a C++20 compiler, and — for the first configure, which
 fetches and builds Slint — a [Rust toolchain](https://rustup.rs).
@@ -35,12 +37,34 @@ cmake --build build
 To use a pre-installed Slint C++ package instead of fetching it, point CMake at
 it with `-DCMAKE_PREFIX_PATH=/path/to/slint`.
 
+## Build & run — Rust
+
+```sh
+cargo run
+```
+
+## Build & run — WebAssembly (browser demo)
+
+Slint has no C++→WASM path, so the browser build uses the Rust backend — the
+UI and behaviour are identical.
+
+```sh
+wasm-pack build --release --target web   # -> ./pkg
+python3 -m http.server 8777              # serve this folder
+# open http://localhost:8777/index.html
+```
+
+`index.html` + `pkg/` is a fully static bundle; drop it on any static host.
+
 ## Layout
 
 | File | |
 |---|---|
-| `node-editor.slint` | the UI — all drawing and interaction |
-| `main.cpp` | backend — models (`VectorModel`) and callbacks |
+| `node-editor.slint` | the UI — all drawing and interaction (shared) |
+| `main.cpp` | C++ backend — `slint::VectorModel` + callbacks |
+| `main.rs` | Rust backend — `VecModel` + callbacks (also the WASM entry) |
+| `CMakeLists.txt` / `Cargo.toml` | C++ / Rust build |
+| `index.html` | WASM host page |
 | `preview.slint` | static wrapper for `slint-viewer --screenshot` (no backend) |
 
 ## How it maps to Slint

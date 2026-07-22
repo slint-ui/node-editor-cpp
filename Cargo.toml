@@ -1,0 +1,30 @@
+# Copyright © SixtyFPS GmbH <info@slint.dev>
+# SPDX-License-Identifier: MIT
+
+[package]
+name = "node-editor"
+version = "0.1.0"
+edition = "2021"
+publish = false
+license = "MIT"
+build = "build.rs"
+
+[[bin]]
+name = "node-editor"
+path = "main.rs"
+
+# The bin and the wasm cdylib share main.rs.
+[lib]
+path = "main.rs"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+slint = "1"
+
+[build-dependencies]
+slint-build = "1"
+
+# wasm build: `wasm-pack build --release --target web`
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen = "0.2"
+console_error_panic_hook = "0.1"

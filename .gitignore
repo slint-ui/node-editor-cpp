@@ -1,4 +1,7 @@
 /build/
 /build-*/
+/target/
+/pkg/
+Cargo.lock
 *.slint.h
 .DS_Store
