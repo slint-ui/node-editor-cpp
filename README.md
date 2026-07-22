@@ -36,6 +36,16 @@ than 0: refreshing the on-screen number twice a second is itself a change, so it
 triggers ~2 repaints/second — the counter measuring itself. Without it on screen,
 idle is a true 0.
 
+## Prebuilt binaries
+
+Grab one for your OS from the [latest release](https://github.com/slint-ui/node-editor-cpp/releases/latest).
+They're unsigned, so on first launch:
+
+- **macOS** — right-click → **Open** → **Open**, or
+  `xattr -d com.apple.quarantine node-editor-macos-arm64 && chmod +x node-editor-macos-arm64`
+- **Windows** — SmartScreen may warn: **More info → Run anyway**
+- **Linux** — `chmod +x node-editor-linux-x64 && ./node-editor-linux-x64`
+
 ## Build & run — C++
 
 Needs CMake ≥ 3.21, a C++20 compiler, and — for the first configure, which
